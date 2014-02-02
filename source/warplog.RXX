@@ -1,0 +1,1803 @@
+/*-----------------------------------------------------------------------------+
+|                                                                              |
+|  REXX source code listing for DrRexx application:                            |
+|    E:\projects\warplog\warplog.RES                                           |
+|                                                                              |
+|  File last modified on: 12/30/01 at: 02:04pm                                 |
+|  Listing produced on:   12/30/01 at: 02:04pm                                 |
+|                                                                              |
++-----------------------------------------------------------------------------*/
+
+SIGNAL ON SYNTAX
+SIGNAL ON HALT
+SIGNAL INIT
+
+RETURN:
+  SIGNAL VALUE DrRexxEvent()
+
+L1:
+  EXIT -1
+
+L2:
+  INTERPRET DrRexxInterpret()
+  SIGNAL RETURN
+ 
+/*-----------------------------------------------------------------------------+
+|                                                                              |
+|  Event handlers for dialog: warplog                                          |
+|                                                                              |
++-----------------------------------------------------------------------------*/
+ 
+/* Event handlers for: warplog (DIALOG) */
+ 
+warplog_Exit:
+  CALL iniSave
+  SIGNAL RETURN
+ 
+warplog_Open:
+  /* update the display */
+  
+  CALL warplog.year_sel.Select (today_year - 1999), "Select"
+  CALL warplog.month_sel.Select today_month, "Select"
+  CALL warplog.date_sel.Select today_day, "Select"
+  
+  /* CALL warplog.date_line.Text "1: "sel_year"/"sel_month"/"sel_date */
+  CALL warplog.subj_one.Select 1
+  sel_subject = 1
+  CALL Update_Text
+  SIGNAL RETURN
+ 
+warplog_Init:
+  /* Check for arguments here.
+   * if no args then look for warplog.* in working dir.
+   * if no files found, then prompt for open-file or terminate
+   */
+  
+  
+  /* load rexx functions */
+  CALL RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
+  CALL SysLoadFuncs
+  
+  
+  /* Set VARs */
+  warplog_ver = "0.99"
+  
+  /* delimiters */
+  dspc = d2c(32) || d2c(32)
+  sspc = d2c(32)
+  junk = d2c(29)
+  crlf = D2C(0013) || D2C(0010)
+  start_line = D2C(01) || D2C(02)
+  end_line = D2C(02) || D2C(01)
+  settings_start= D2C(04) || D2C(04)
+  bkm_start = D2C(17)
+  bkm_end = D2C(16)
+  
+  inifile = 'warplog.ini'
+  
+  /* date string stuff */
+  weekday.0 = 7
+  weekday.1 = "Sunday"
+  weekday.2 = "Monday"
+  weekday.3 = "Tuesday"
+  weekday.4 = "Wednesday"
+  weekday.5 = "Thursday"
+  weekday.6 = "Friday"
+  weekday.7 = "Saturday"
+  month_string.0 = 12
+  month_string.01 = "January"
+  month_string.02 = "February"
+  month_string.03 = "March"
+  month_string.04 = "April"
+  month_string.05 = "May"
+  month_string.06 = "June"
+  month_string.07 = "July"
+  month_string.08 = "August"
+  month_string.09 = "September"
+  month_string.10 = "October"
+  month_string.11 = "November"
+  month_string.12 = "December"
+  
+  /* Done with VARs */
+  
+  /* Get the current date */
+  today_date_sorted = Date(Sorted)
+  today_jdate = Date(days)
+  today_year = substr(today_date_sorted, 1 ,4)
+  today_month = substr(today_date_sorted, 5, 2)
+  today_day = substr(today_date_sorted, 7, 2)
+  sel4_year = today_year
+  sel_year = today_year - 1999
+  sel_month = today_month
+  sel_date = today_day
+  
+  CALL warplog.Font '8.Helvetica'
+  
+  CALL iniRead
+  
+  CALL warplog.status_date.Text today_year"/"today_month"/"today_day" "today_jdate
+  
+  CALL warplog.status_hint.IsDefault "dialoghint"
+  
+  /* Read in the current data file */
+  CALL Open_data_file
+  
+  /* Fill in date_sel */
+  call Update_datelist
+  
+  CALL Show
+  
+  SIGNAL RETURN
+ 
+/* Event handlers for: Exit_Warplog (PUSHBUTTON) */
+ 
+warplog_Exit_Warplog_Click:
+  
+  CALL iniSave
+  
+  /* kill the window */
+  EXIT
+  SIGNAL RETURN
+ 
+/* Event handlers for: Warplog_settings (PUSHBUTTON) */
+ 
+warplog_Warplog_settings_Click:
+  
+  IF ModalFor(Change_Settings) = 1 THEN
+    CALL warplog.Font deffont
+  
+  SIGNAL RETURN
+ 
+/* Event handlers for: Warplog_Help (PUSHBUTTON) */
+ 
+warplog_Warplog_Help_Click:
+  CALL Helpfile.Open
+  SIGNAL RETURN
+ 
+/* Event handlers for: OpenFile_button (PUSHBUTTON) */
+ 
+warplog_OpenFile_button_Click:
+  /* launch file dialog to select new data and rc file */
+  
+  newfile=FilePrompt("*.dat", "Open File", "Okay", "open")
+  
+  /* test selected for selected data file */
+  
+  IF newfile >< "" THEN
+    DO
+    xx=stream(newfile,'c','query exists')
+    IF xx >< "" THEN
+      DO
+      current_file = newfile
+      CALL Open_data_file
+      END
+    ELSE
+      DO
+      confirm_message = "File does not exist, open new?"
+      IF ModalFor(Confirm) = 1 THEN
+        DO
+          current_file = newfile
+          CALL Open_data_file
+        END
+      END
+    END
+  
+  /* refresh year/month/day lists to current date */
+  CALL Update_datelist
+  SIGNAL RETURN
+ 
+/* Event handlers for: To_clipboard (PUSHBUTTON) */
+ 
+warplog_To_clipboard_Click:
+  CALL clipboard( warplog.date_line.Text() || crlf ||warplog.input_mle.Text() )
+  SIGNAL RETURN
+ 
+/* Event handlers for: Search_data (PUSHBUTTON) */
+ 
+warplog_Search_data_Click:
+  rc = search_data.Open()
+  SIGNAL RETURN
+ 
+/* Event handlers for: Add_edit (PUSHBUTTON) */
+ 
+warplog_Add_edit_Click:
+  CALL add_edit
+  
+  SIGNAL RETURN
+ 
+/* Event handlers for: day_plus (PUSHBUTTON) */
+ 
+warplog_day_plus_Click:
+  CALL advance_oneday
+  SIGNAL RETURN
+ 
+/* Event handlers for: Day_minus (PUSHBUTTON) */
+ 
+warplog_Day_minus_Click:
+  CALL back_oneday
+  SIGNAL RETURN
+ 
+/* Event handlers for: subj_four (RADIOBUTTON) */
+ 
+warplog_subj_four_Click:
+  sel_subject = 4
+  CALL Update_text
+  SIGNAL RETURN
+ 
+/* Event handlers for: subj_three (RADIOBUTTON) */
+ 
+warplog_subj_three_Click:
+  sel_subject = 3
+  CALL Update_text
+  SIGNAL RETURN
+ 
+/* Event handlers for: subj_two (RADIOBUTTON) */
+ 
+warplog_subj_two_Click:
+  sel_subject = 2
+  CALL Update_text
+  SIGNAL RETURN
+ 
+/* Event handlers for: subj_one (RADIOBUTTON) */
+ 
+warplog_subj_one_Click:
+  sel_subject = 1
+  CALL Update_text
+  SIGNAL RETURN
+ 
+/* Event handlers for: date_sel (LISTBOX) */
+ 
+warplog_date_sel_Enter:
+  CALL add_edit
+  SIGNAL RETURN
+ 
+warplog_date_sel_Init:
+  CALL Show
+  SIGNAL RETURN
+ 
+warplog_date_sel_Select:
+  sel_date = warplog.date_sel.Select()
+  CALL Update_text
+  SIGNAL RETURN
+ 
+/* Event handlers for: month_sel (COMBOBOX) */
+ 
+warplog_month_sel_Select:
+  sel_month = warplog.month_sel.Select()
+  CALL Update_datelist
+  CALL Update_text
+  SIGNAL RETURN
+ 
+warplog_month_sel_Init:
+  /* set to current date on startup */
+  
+  DO i=1 to month_string.0
+    i=RIGHT(i,2,"0")
+    CALL warplog.month_sel.Add month_string.i
+  END
+  SIGNAL RETURN
+ 
+/* Event handlers for: year_sel (COMBOBOX) */
+ 
+warplog_year_sel_Select:
+  sel_year = warplog.year_sel.Select()
+  CALL Update_datelist
+  CALL Update_text
+  SIGNAL RETURN
+ 
+warplog_year_sel_Init:
+  /* select current year on startup */
+  DO k = 2000 TO (today_year + 5)
+    CALL warplog.year_sel.Add k, "A"
+  END
+  SIGNAL RETURN
+ 
+/*-----------------------------------------------------------------------------+
+|                                                                              |
+|  Event handlers for dialog: Editit                                           |
+|                                                                              |
++-----------------------------------------------------------------------------*/
+ 
+/* Event handlers for: Editit (DIALOG) */
+ 
+Editit_Init:
+  CALL editit.hint_text.IsDefault "controlhint"
+  
+  IF SysIni(inifile, 'settings', 'editit_sizeloc') = 'ERROR:' THEN
+     CALL Sysini inifile, 'settings', 'editit_sizeloc', editit.Position()
+  ELSE
+     CALL editit.Position SysIni(inifile, 'settings', 'editit_sizeloc')
+  
+  CALL editit.Font warplog.Font()
+  
+  CALL Show
+  SIGNAL RETURN
+ 
+Editit_Open:
+  
+  SELECT
+    WHEN sel_subject = 1 THEN
+       CALl editit.editsubj_one.Select 1
+    WHEN sel_subject = 2 THEN
+       CALL editit.editsubj_two.Select 1
+    WHEN sel_subject = 3 THEN
+       CALL editit.editsubj_three.Select 1
+    WHEN sel_subject = 4 THEN
+       CALL editit.editsubj_four.Select 1
+    OTHERWISE
+       NOP
+  END
+  
+  current_subject = sel_subject
+  /*
+  CALL editit.editsubj_one.Hint "Edit "subject_name.1" Subject
+  CALL editit.editsubj_two.Hint "Edit "subject_name.2" Subject
+  CALL editit.editsubj_three.Hint "Edit "subject_name.3" Subject
+  CALL editit.editsubj_four.Hint "Edit "subject_name.4" Subject
+  
+  */
+  
+  CALL editit.edit_mle.Text save_data.sel_subject
+  
+  SIGNAL RETURN
+ 
+/* Event handlers for: Cancel_button (PUSHBUTTON) */
+ 
+Editit_Cancel_button_Click:
+  /* bail out here */
+  CALL Sysini inifile, 'settings', 'editit_sizeloc', editit.Position()
+  CALL editit.Close
+  RETURN 0
+  SIGNAL RETURN
+ 
+/* Event handlers for: Save_button (PUSHBUTTON) */
+ 
+Editit_Save_button_Click:
+  /* save the mle data and close */
+  
+  save_data.current_subject = editit.edit_mle.Text()
+  
+  /* terminate this dialog */
+  CALL Sysini inifile, 'settings', 'editit_sizeloc', editit.Position()
+  CALL editit.Close
+  RETURN 1
+  SIGNAL RETURN
+ 
+/* Event handlers for: editsubj_four (RADIOBUTTON) */
+ 
+Editit_editsubj_four_Init:
+  CALL Editit.editsubj_four.Text subject_name.4
+  SIGNAL RETURN
+ 
+Editit_editsubj_four_Click:
+  save_data.current_subject = editit.edit_mle.Text()
+  
+  current_subject = 4
+  CALL editit.edit_mle.Text save_data.4
+  CALL editit.Text sel_weekday" "month_string.sel_month" "sel_date", "sel4_year"  Day:"sel_jday" - ("subject_name.current_subject")"
+  SIGNAL RETURN
+ 
+/* Event handlers for: editsubj_three (RADIOBUTTON) */
+ 
+Editit_editsubj_three_Init:
+  CALL Editit.editsubj_three.Text subject_name.3
+  SIGNAL RETURN
+ 
+Editit_editsubj_three_Click:
+  save_data.current_subject = editit.edit_mle.Text()
+  
+  current_subject = 3
+  CALL editit.edit_mle.Text save_data.3
+  CALL editit.Text sel_weekday" "month_string.sel_month" "sel_date", "sel4_year"  Day:"sel_jday" - ("subject_name.current_subject")"
+  SIGNAL RETURN
+ 
+/* Event handlers for: editsubj_two (RADIOBUTTON) */
+ 
+Editit_editsubj_two_Init:
+  CALL editit.editsubj_two.Text subject_name.2
+  SIGNAL RETURN
+ 
+Editit_editsubj_two_Click:
+  save_data.current_subject = editit.edit_mle.Text()
+  
+  current_subject = 2
+  CALL editit.edit_mle.Text save_data.2
+  CALL editit.Text sel_weekday" "month_string.sel_month" "sel_date", "sel4_year"  Day:"sel_jday" - ("subject_name.current_subject")"
+  SIGNAL RETURN
+ 
+/* Event handlers for: editsubj_one (RADIOBUTTON) */
+ 
+Editit_editsubj_one_Init:
+  CALL editit.editsubj_one.Text subject_name.1
+  SIGNAL RETURN
+ 
+Editit_editsubj_one_Click:
+  save_data.current_subject = editit.edit_mle.Text()
+  
+  current_subject = 1
+  CALL editit.edit_mle.Text save_data.1
+  CALL editit.Text sel_weekday" "month_string.sel_month" "sel_date", "sel4_year"  Day:"sel_jday" - ("subject_name.current_subject")"
+  SIGNAL RETURN
+ 
+/* Event handlers for: Add_bookmark (PUSHBUTTON) */
+ 
+Editit_Add_bookmark_Click:
+  save_data.current_subject = editit.edit_mle.Text()
+  
+  IF ModalFor(Add_bookmarks) = 1 THEN
+    DO
+      save_data.current_subject = save_data.current_subject || crlf || crlf || bookmark_ins
+      CALL editit.edit_mle.Text save_data.current_subject
+      
+    END
+  SIGNAL RETURN
+ 
+/* Event handlers for: Edit_mle (MLE) */
+ 
+Editit_Edit_mle_Init:
+  CALL editit.Text sel_weekday" "month_string.sel_month" "sel_date", "sel4_year"  Day:"sel_jday" - ("subject_name.sel_subject")"
+  SIGNAL RETURN
+ 
+/*-----------------------------------------------------------------------------+
+|                                                                              |
+|  Event handlers for dialog: search_data                                      |
+|                                                                              |
++-----------------------------------------------------------------------------*/
+ 
+/* Event handlers for: search_data (DIALOG) */
+ 
+search_data_Init:
+  IF SysIni(inifile, 'settings', 'search_sizeloc') = 'ERROR:' THEN
+     CALL Sysini inifile, 'settings', 'search_sizeloc', search_data.Position()
+  ELSE
+     CALL search_data.Position SysIni(inifile, 'settings', 'search_sizeloc')
+  
+  CALL search_data.Font warplog.Font()
+  
+  do_search_bkm = 0
+  CALL Search_data.bookmarks_search.Select 0
+  
+  CALL Show
+  SIGNAL RETURN
+ 
+/* Event handlers for: cancel_search (PUSHBUTTON) */
+ 
+search_data_cancel_search_Click:
+  CALL Sysini inifile, 'settings', 'search_sizeloc', search_data.Position()
+  CALL search_data.Close
+  SIGNAL RETURN
+ 
+/* Event handlers for: start_search (PUSHBUTTON) */
+ 
+search_data_start_search_Click:
+  /* search data for matching text over specified range */
+  
+  search_results_total = 0
+  
+  /* convert MM/dd to JJJ */
+  sel_begin_jday = Ymd2jdate((sel_begin_year + 1999), sel_begin_month, sel_begin_date)
+  sel_end_jday = Ymd2jdate((sel_end_year + 1999), sel_end_month, sel_end_date)
+  
+  
+  /* clear search_results list*/
+  CALL search_data.search_results.Delete
+  
+  /* Check for bookmark search */
+  IF search_data.bookmarks_search.Select() = 1 THEN
+    DO
+     bkm_search_string = search_data.bookmark_searchlist.Item(search_data.bookmark_searchlist.Select(), "V")
+     bkm_search_string = bkm_start || bkm_search_string || bkm_end
+     bkm_search_length = LENGTH(bkm_search_string)
+    END
+  
+  /* check that start is before end date */
+  IF sel_begin_year"."sel_begin_jday > sel_end_year"."sel_end_jday THEN
+    CALL search_data.status.Text "Dates are out of order"
+  ELSE
+    DO /*** ...Or process the search */
+      CALL search_data.status.Text "Searching... Please wait"
+  
+      DO search_yr=sel_begin_year TO sel_end_year      /* begin year */
+       IF search_yr=sel_begin_year THEN
+         search_begin_jday = sel_begin_jday
+       ELSE
+         search_begin_jday = 001
+  
+       IF search_yr=sel_end_year THEN
+         search_end_jday=sel_end_jday
+       ELSE
+         search_end_jday = 366
+  
+       DO search_jday=search_begin_jday TO search_end_jday   /* begin Jday */
+          CALL search_data.status.Text "Searching day: " || search_yr + 1999 || "/" || search_jday || "...Please Wait"
+          search_jday=RIGHT(search_jday, 3, "0")
+   
+          IF search_data.search_sj1.Select() = 1 THEN
+            DO
+              search_sj = 1
+              CALL search_day
+            END
+          IF search_data.search_sj2.Select() = 1 THEN
+            DO
+              search_sj = 2
+              CALL search_day
+            END
+          IF search_data.search_sj3.Select() = 1 THEN
+            DO
+              search_sj = 3
+              CALL search_day
+            END
+          IF search_data.search_sj4.Select() = 1 THEN
+            DO
+              search_sj = 4
+              CALL search_day
+            END
+                
+       END /* end jday */
+     END /* end year */
+     CALL search_data.status.Text "Done.  Found "search_results_total" matches."
+    END /*** end search */
+  
+  
+  
+  
+  SIGNAL RETURN
+ 
+/* Event handlers for: search_results (LISTBOX) */
+ 
+search_data_search_results_Enter:
+  foundstring = search_data.search_results.Select()
+  founddata = search_data.search_results.Item(foundstring, "D")
+  foundstring = search_data.search_results.Item(foundstring, "V")
+  
+  PARSE VAR founddata sel_year '/' sel_month '/' sel_date '/' sel_subject
+  
+  IF sel_subject = 1 THEN
+    CALL Warplog.subj_one.Select 1
+  IF sel_subject = 2 THEN
+    CALL Warplog.subj_two.Select 1
+  If sel_subject = 3 THEN
+    CALL Warplog.subj_three.Select 1
+  
+  CALL warplog.date_sel.Select sel_date, "select"
+  CALL warplog.month_sel.Select sel_month, "select"
+  CALL warplog.year_sel.Select sel_year, "select"
+  CALL Update_text
+  
+  SIGNAL RETURN
+ 
+/* Event handlers for: search_sj4 (CHECKBOX) */
+ 
+search_data_search_sj4_Init:
+  CALL search_data.search_sj4.Text subject_name.4
+  SIGNAL RETURN
+ 
+/* Event handlers for: search_sj3 (CHECKBOX) */
+ 
+search_data_search_sj3_Init:
+  CALL search_data.search_sj3.Text subject_name.3
+  SIGNAL RETURN
+ 
+/* Event handlers for: search_sj2 (CHECKBOX) */
+ 
+search_data_search_sj2_Init:
+  CALL search_data.search_sj2.Text subject_name.2
+  SIGNAL RETURN
+ 
+/* Event handlers for: search_sj1 (CHECKBOX) */
+ 
+search_data_search_sj1_Init:
+  CALL search_data.search_sj1.Text subject_name.1
+  CALL search_data.search_sj1.Select 1
+  SIGNAL RETURN
+ 
+/* Event handlers for: bookmarks_search (CHECKBOX) */
+ 
+search_data_bookmarks_search_Click:
+  IF Search_data.bookmarks_search.Select() = 1 THEN
+    DO
+      do_search_bkm = 1
+      CALL Search_data.bookmark_searchlist.Enable
+      CALL Search_data.bookmark_searchlist.Select 1
+    END
+  ELSE
+    DO
+      do_search_bkm = 0
+      CALL Search_data.bookmark_searchlist.Disable
+    END
+  SIGNAL RETURN
+ 
+/* Event handlers for: bookmark_searchlist (COMBOBOX) */
+ 
+search_data_bookmark_searchlist_Init:
+  /* fill combo-box with bookmarks */
+  
+  DO i=1 TO bookmarks.0
+  CALL search_data.bookmark_searchlist.Add bookmarks.i, "A", i
+  END
+  
+  SIGNAL RETURN
+ 
+/* Event handlers for: end_date_sel (COMBOBOX) */
+ 
+search_data_end_date_sel_Select:
+  sel_end_date = search_data.end_date_sel.Select()
+  SIGNAL RETURN
+ 
+search_data_end_date_sel_Init:
+  /* fill the array on startup */
+  DO i = 1 TO 28
+    IF i < 10 THEN
+       i = "0" || i
+    CALL search_data.end_date_sel.add i, "A"
+  END
+  
+  /* fill remainder beyond 28 dependent on month & leap year (for Feb.) */
+  
+  SELECT
+    WHEN today_month = 2 & today_year//4 >< 0 THEN
+      DO
+        CALL search_data.end_date_sel.Delete 31
+        CALL search_data.end_date_sel.Delete 30
+        CALL search_data.end_date_sel.Delete 29
+      END
+    WHEN today_month = 2 & today_year//4 = 0 THEN
+      DO
+        CALL search_data.end_date_sel.Add 29, "A"
+        CALL search_data.end_date_sel.Delete 31
+        CALL search_data.end_date_sel.Delete 30
+      END
+    WHEN today_month = 4 | today_month = 6 | today_month = 9 | today_month = 11 THEN
+      DO
+        CALL search_data.end_date_sel.Add 29, "A"
+        CALL search_data.end_date_sel.Add 30, "A"
+        CALL search_data.end_date_sel.Delete 31
+      END
+    OTHERWISE
+      DO
+        CALL search_data.end_date_sel.Add 29, "A"
+        CALL search_data.end_date_sel.Add 30, "A"
+        CALL search_data.end_date_sel.Add 31, "A"
+      END
+  END
+  
+  CALL search_data.end_date_sel.Select today_day, "Select"
+  SIGNAL RETURN
+ 
+/* Event handlers for: end_month_sel (COMBOBOX) */
+ 
+search_data_end_month_sel_Select:
+  sel_end_month = search_data.end_month_sel.Select()
+  SIGNAL RETURN
+ 
+search_data_end_month_sel_Init:
+  /* set to current date on startup */
+  
+  CALL search_data.end_month_sel.Add "Jan"
+  CALL search_data.end_month_sel.Add "Feb"
+  CALL search_data.end_month_sel.Add "Mar"
+  CALL search_data.end_month_sel.Add "Apr"
+  CALL search_data.end_month_sel.Add "May"
+  CALL search_data.end_month_sel.Add "Jun"
+  CALL search_data.end_month_sel.Add "Jul"
+  CALL search_data.end_month_sel.Add "Aug"
+  CALL search_data.end_month_sel.Add "Sep"
+  CALL search_data.end_month_sel.Add "Oct"
+  CALL search_data.end_month_sel.Add "Nov"
+  CALL search_data.end_month_sel.Add "Dec"
+  
+  CALL search_data.end_month_sel.Select today_month, "Select"
+  SIGNAL RETURN
+ 
+/* Event handlers for: end_year_sel (COMBOBOX) */
+ 
+search_data_end_year_sel_Select:
+  sel_end_year = search_data.end_year_sel.Select()
+  SIGNAL RETURN
+ 
+search_data_end_year_sel_Init:
+  /* select current year on startup */
+  DO k = 2000 TO today_year
+    CALL search_data.end_year_sel.Add k, "A"
+  END
+  
+  CALL search_data.end_year_sel.Select (today_year - 1999), "Select"
+  SIGNAL RETURN
+ 
+/* Event handlers for: begin_date_sel (COMBOBOX) */
+ 
+search_data_begin_date_sel_Select:
+  sel_begin_date = search_data.begin_date_sel.Select()
+  SIGNAL RETURN
+ 
+search_data_begin_date_sel_Init:
+  /* fill the array on startup */
+  DO i = 1 TO 28
+    IF i < 10 THEN
+       i = "0" || i
+    CALL search_data.begin_date_sel.add i, "A"
+  END
+  
+  /* fill remainder beyond 28 dependent on month & leap year (for Feb.) */
+  
+  SELECT
+    WHEN today_month = 2 & today_year//4 >< 0 THEN
+      DO
+        CALL search_data.begin_date_sel.Delete 31
+        CALL search_data.begin_date_sel.Delete 30
+        CALL search_data.begin_date_sel.Delete 29
+      END
+    WHEN today_month = 2 & today_year//4 = 0 THEN
+      DO
+        CALL search_data.begin_date_sel.Add 29, "A"
+        CALL search_data.begin_date_sel.Delete 31
+        CALL search_data.begin_date_sel.Delete 30
+      END
+    WHEN today_month = 4 | today_month = 6 | today_month = 9 | today_month = 11 THEN
+      DO
+        CALL search_data.begin_date_sel.Add 29, "A"
+        CALL search_data.begin_date_sel.Add 30, "A"
+        CALL search_data.begin_date_sel.Delete 31
+      END
+    OTHERWISE
+      DO
+        CALL search_data.begin_date_sel.Add 29, "A"
+        CALL search_data.begin_date_sel.Add 30, "A"
+        CALL search_data.begin_date_sel.Add 31, "A"
+      END
+  END
+  
+  CALL search_data.begin_date_sel.Select today_day, "Select"
+  SIGNAL RETURN
+ 
+/* Event handlers for: begin_month_sel (COMBOBOX) */
+ 
+search_data_begin_month_sel_Select:
+  sel_begin_month = search_data.begin_month_sel.Select()
+  SIGNAL RETURN
+ 
+search_data_begin_month_sel_Init:
+  /* set to current date on startup */
+  
+  CALL search_data.begin_month_sel.Add "Jan"
+  CALL search_data.begin_month_sel.Add "Feb"
+  CALL search_data.begin_month_sel.Add "Mar"
+  CALL search_data.begin_month_sel.Add "Apr"
+  CALL search_data.begin_month_sel.Add "May"
+  CALL search_data.begin_month_sel.Add "Jun"
+  CALL search_data.begin_month_sel.Add "Jul"
+  CALL search_data.begin_month_sel.Add "Aug"
+  CALL search_data.begin_month_sel.Add "Sep"
+  CALL search_data.begin_month_sel.Add "Oct"
+  CALL search_data.begin_month_sel.Add "Nov"
+  CALL search_data.begin_month_sel.Add "Dec"
+  
+  CALL search_data.begin_month_sel.Select today_month, "Select"
+  SIGNAL RETURN
+ 
+/* Event handlers for: begin_year_sel (COMBOBOX) */
+ 
+search_data_begin_year_sel_Select:
+  sel_begin_year = search_data.begin_year_sel.Select()
+  SIGNAL RETURN
+ 
+search_data_begin_year_sel_Init:
+  /* select current year on startup */
+  DO k = 2000 TO today_year
+    CALL search_data.begin_year_sel.Add k, "A"
+  END
+  
+  CALL search_data.begin_year_sel.Select (today_year - 1999), "Select"
+  SIGNAL RETURN
+ 
+/*-----------------------------------------------------------------------------+
+|                                                                              |
+|  Event handlers for dialog: Helpfile                                         |
+|                                                                              |
++-----------------------------------------------------------------------------*/
+ 
+/* Event handlers for: Helpfile (DIALOG) */
+ 
+Helpfile_Init:
+  IF SysIni(inifile, 'settings', 'helpfile_sizeloc') = 'ERROR:' THEN
+     CALL Sysini inifile, 'settings', 'helpfile_sizeloc', Helpfile.Position()
+  ELSE
+     CALL Helpfile.Position SysIni(inifile, 'settings', 'helpfile_sizeloc')
+  
+  CALL Helpfile.Font warplog.Font()
+  
+  CALL Show
+  SIGNAL RETURN
+ 
+Helpfile_Open:
+  /* Read in the readme file and place into MLE */
+  /* Test for existence of file here */
+      readme_txt = "readme.txt"
+      text_readme = ""
+  /* If file exists - read into var and feed to MLE */
+      DO WHILE Lines(readme_txt)
+          newline = LineIn(readme_txt)
+          text_readme = text_readme || newline || d2c(13)||d2c(10)
+         END
+      CAll LineOut(readme_txt)   
+          
+      CALL Helpfile.text_window.Text text_readme
+  SIGNAL RETURN
+ 
+/* Event handlers for: Dismiss (PUSHBUTTON) */
+ 
+Helpfile_Dismiss_Click:
+  CALL Sysini inifile, 'settings', 'helpfile_sizeloc', Helpfile.Position()
+  CALL Helpfile.Close
+  SIGNAL RETURN
+ 
+/*-----------------------------------------------------------------------------+
+|                                                                              |
+|  Event handlers for dialog: Change_settings                                  |
+|                                                                              |
++-----------------------------------------------------------------------------*/
+ 
+/* Event handlers for: Change_settings (DIALOG) */
+ 
+Change_settings_Init:
+  IF SysIni(inifile, 'settings', 'settings_sizeloc') = 'ERROR:' THEN
+     CALL Sysini inifile, 'settings', 'settings_sizeloc', Change_settings.Position()
+  ELSE
+     CALL Change_settings.Position SysIni(inifile, 'settings', 'settings_sizeloc')
+  
+  CALL Change_settings.Font warplog.Font()
+  
+  CALL Show
+  SIGNAL RETURN
+ 
+Change_settings_Open:
+  /* fill fields with current values on startup */
+  
+  /* default file */
+  CALL Change_settings.default_file.Text default_file
+  
+  /* Subject Names */
+  CALL Change_settings.New_subj1.Text subject_name.1
+  CALL Change_settings.New_subj2.Text subject_name.2
+  CALL Change_settings.New_subj3.Text subject_name.3
+  CALL Change_settings.New_subj4.Text subject_name.4
+  
+  SIGNAL RETURN
+ 
+/* Event handlers for: Cancel_settings (PUSHBUTTON) */
+ 
+Change_settings_Cancel_settings_Click:
+  CALL Sysini inifile, 'settings', 'settings_sizeloc', Change_settings.Position()
+  CALL Change_settings.Close
+  RETURN 0
+  SIGNAL RETURN
+ 
+/* Event handlers for: Save_changes (PUSHBUTTON) */
+ 
+Change_settings_Save_changes_Click:
+  /* write new settings to file (recreate *.rc file) */
+  
+  IF Change_settings.default_file.Text() <> default_file THEN
+    DO
+      default_file = Change_settings.default_file.Text()
+      CALL SysIni inifile, 'settings', 'deffile', default_file
+    END
+  
+  /* check for font change */
+  IF warplog.Font() <> Change_settings.default_font.Font() THEN
+    DO
+      deffont = Change_settings.default_font.Font()
+      CALL SysIni inifile, 'settings', 'deffont', deffont
+    END
+    
+  
+  /* check for subject title changes */
+  write2disk = 0
+  IF subject_name.1 <> Change_settings.New_subj1.Text() THEN
+     DO
+     subject_name.1 = Change_settings.New_subj1.Text()
+     write2disk = 1
+     END
+  IF subject_name.2 <> Change_settings.New_subj2.Text() THEN
+     DO
+     subject_name.2 = Change_settings.New_subj2.Text()
+     write2disk = 1
+     END
+  IF subject_name.3 <> Change_settings.New_subj3.Text() THEN
+     DO
+     subject_name.3 = Change_settings.New_subj3.Text()
+     write2disk = 1
+     END
+  IF subject_name.4 <> Change_settings.New_subj4.Text() THEN
+     DO
+     subject_name.4 = Change_settings.New_subj4.Text()
+     write2disk = 1
+     END
+  
+  /* if subject names have changed then commit the changes to disk and update the main dialog */
+  IF write2disk = 1 THEN
+    DO
+    CALL Newdata_save
+    CALL Warplog.subj_one.Text subject_name.1
+    CALL Warplog.subj_two.Text subject_name.2
+    CALL Warplog.subj_three.Text subject_name.3
+    CALL Warplog.subj_four.Text subject_name.4
+    END
+  
+  /* close dialog */
+  CALL Sysini inifile, 'settings', 'settings_sizeloc', Change_settings.Position()
+  CALL Change_settings.Close
+  RETURN 1
+  
+  
+  SIGNAL RETURN
+ 
+/* Event handlers for: BookmarkEdit (PUSHBUTTON) */
+ 
+Change_settings_BookmarkEdit_Click:
+  /* Launch the Edit bookmarks dialog */
+  
+  rc=ModalFor(Edit_bookmarks)
+  SIGNAL RETURN
+ 
+/* Event handlers for: File_select (PUSHBUTTON) */
+ 
+Change_settings_File_select_Click:
+  /* call file selection Dialog to choose new default file */
+  
+  rc=FilePrompt("*.dat", "Open File", "Okay", "open")
+  
+  /* test if the file exists and warn the user if it does not. */
+  
+  IF rc <> "" THEN
+    CALL Change_settings.default_file.Text( rc )
+  
+  SIGNAL RETURN
+ 
+/*-----------------------------------------------------------------------------+
+|                                                                              |
+|  Event handlers for dialog: Add_bookmarks                                    |
+|                                                                              |
++-----------------------------------------------------------------------------*/
+ 
+/* Event handlers for: Add_bookmarks (DIALOG) */
+ 
+Add_bookmarks_Init:
+  /* Bookmark selection interface */
+  
+  IF SysIni(inifile, 'settings', 'adbkm_sizeloc') = 'ERROR:' THEN
+     CALL Sysini inifile, 'settings', 'adbkm_sizeloc', Add_bookmarks.Position()
+  ELSE
+     CALL Add_bookmarks.Position SysIni(inifile, 'settings', 'adbkm_sizeloc')
+  
+  CALL Add_bookmarks.Font warplog.Font()
+  
+  DO i=1 to bookmarks.0
+  CALL Add_bookmarks.bookmark_list.Add bookmarks.i, "A"
+  END
+  
+  CALL Show
+  SIGNAL RETURN
+ 
+/* Event handlers for: Cancel (PUSHBUTTON) */
+ 
+Add_bookmarks_Cancel_Click:
+  CALL Sysini inifile, 'settings', 'adbkm_sizeloc', Add_bookmarks.Position()
+  CALL Add_bookmarks.close
+  RETURN 0
+  SIGNAL RETURN
+ 
+/* Event handlers for: Edit (PUSHBUTTON) */
+ 
+Add_bookmarks_Edit_Click:
+  IF ModalFor(Edit_bookmarks) = 1 THEN
+  DO
+    /* clear out listbox */
+    CALL Add_bookmarks.bookmark_list.Delete 
+    /* fill listbox back in  */
+    DO i=1 to bookmarks.0
+      CALL Add_bookmarks.bookmark_list.Add bookmarks.i, "A"
+    END 
+  END
+  SIGNAL RETURN
+ 
+/* Event handlers for: Insert (PUSHBUTTON) */
+ 
+Add_bookmarks_Insert_Click:
+  CALL ins_bookmark
+  RETURN 1
+  SIGNAL RETURN
+ 
+/* Event handlers for: bookmark_list (LISTBOX) */
+ 
+Add_bookmarks_bookmark_list_Enter:
+  CALL ins_bookmark
+  CALL Add_bookmarks.Close
+  RETURN 1
+  SIGNAL RETURN
+ 
+/*-----------------------------------------------------------------------------+
+|                                                                              |
+|  Event handlers for dialog: Edit_Bookmarks                                   |
+|                                                                              |
++-----------------------------------------------------------------------------*/
+ 
+/* Event handlers for: Edit_Bookmarks (DIALOG) */
+ 
+Edit_Bookmarks_Init:
+  IF SysIni(inifile, 'settings', 'edbkm_sizeloc') = 'ERROR:' THEN
+     CALL Sysini inifile, 'settings', 'edbkm_sizeloc', Edit_bookmarks.Position()
+  ELSE
+     CALL Edit_bookmarks.Position SysIni(inifile, 'settings', 'edbkm_sizeloc')
+  
+  CALL Edit_Bookmarks.Font warplog.Font()
+  
+  CALL Show
+  SIGNAL RETURN
+ 
+Edit_Bookmarks_Open:
+  /* Bookmark Edit interface */
+  
+  bookmarks_edit_change = 0
+  
+  /* fill the Edit List */
+  DO i=1 to bookmarks.0
+  CALL Edit_bookmarks.bkm_edit_list.Add bookmarks.i, "A", i
+  END
+  SIGNAL RETURN
+ 
+/* Event handlers for: bkm_edit_done (PUSHBUTTON) */
+ 
+Edit_Bookmarks_bkm_edit_done_Click:
+  /* call save of data file in thread */
+  
+  IF bookmarks_edit_change = 1 THEN
+    DO
+    write2disk = 1
+    CALL Newdata_save
+    END
+  
+  /*   tid=start(newdata_save)  */
+  
+  CALL Sysini inifile, 'settings', 'edbkm_sizeloc', Edit_bookmarks.Position()
+  CALL Edit_bookmarks.Close
+  
+  RETURN bookmarks_edit_change
+  SIGNAL RETURN
+ 
+/* Event handlers for: bkm_delete (PUSHBUTTON) */
+ 
+Edit_Bookmarks_bkm_delete_Click:
+  /* delete bookmark entry */
+  
+  CALL Edit_bookmarks.bkm_edit_list.Delete Edit_bookmarks.bkm_edit_list.Select()
+  
+  bookmarks. = ""
+  bookmarks.0 = Edit_bookmarks.bkm_edit_list.Item()
+  DO i=1 TO bookmarks.0
+    bookmarks.i = Edit_bookmarks.bkm_edit_list.Item( i, "V" )
+    CALL Edit_bookmarks.bkm_edit_list.Item i, "D", i
+  END
+  
+  bookmarks_edit_change = 1
+  SIGNAL RETURN
+ 
+/* Event handlers for: bkm_change (PUSHBUTTON) */
+ 
+Edit_Bookmarks_bkm_change_Click:
+  /* find array value */
+  i = Edit_bookmarks.bkm_edit_list.Item( Edit_bookmarks.bkm_edit_list.Select(), "D" )
+  bookmarks.i = Edit_bookmarks.bkm_edit_str.Text()
+  CALL Edit_bookmarks.bkm_edit_list.Item Edit_bookmarks.bkm_edit_list.Select(), "V", bookmarks.i
+  
+  bookmarks_edit_change = 1
+  SIGNAL RETURN
+ 
+/* Event handlers for: bkm_add (PUSHBUTTON) */
+ 
+Edit_Bookmarks_bkm_add_Click:
+  /* add a bookmark to the list and array */
+  
+  i = bookmarks.0 + 1
+  bookmarks.0 = i
+  bookmarks.i = Edit_bookmarks.bkm_edit_str.Text()
+  
+  
+  CALL Edit_bookmarks.bkm_edit_list.Add Edit_bookmarks.bkm_edit_str.Text(), "A", i
+  bookmarks_edit_change = 1
+  SIGNAL RETURN
+ 
+/* Event handlers for: bkm_edit_list (LISTBOX) */
+ 
+Edit_Bookmarks_bkm_edit_list_Select:
+  CALL Edit_bookmarks.bkm_edit_str.Text Edit_bookmarks.bkm_edit_list.Item( Edit_bookmarks.bkm_edit_list.Select(), "V")
+  SIGNAL RETURN
+ 
+/*-----------------------------------------------------------------------------+
+|                                                                              |
+|  Event handlers for dialog: Confirm                                          |
+|                                                                              |
++-----------------------------------------------------------------------------*/
+ 
+/* Event handlers for: Confirm (DIALOG) */
+ 
+Confirm_Init:
+  IF SysIni(inifile, 'settings', 'confirm_sizeloc') = 'ERROR:' THEN
+     CALL Sysini inifile, 'settings', 'confirm_sizeloc', Confirm.Position()
+  ELSE
+     CALL Confirm.Position SysIni(inifile, 'settings', 'confirm_sizeloc')
+  
+  CALL Confirm.Font warplog.Font()
+  CALL Confirm.msg_txt.Text confirm_message
+  SIGNAL RETURN
+ 
+/* Event handlers for: msg_cancel (PUSHBUTTON) */
+ 
+Confirm_msg_cancel_Click:
+  CALL Sysini inifile, 'settings', 'confirm_sizeloc', Confirm.Position()
+  CALL Confirm.Close
+  RETURN 0
+  SIGNAL RETURN
+ 
+/* Event handlers for: msg_ok (PUSHBUTTON) */
+ 
+Confirm_msg_ok_Click:
+  CALL Sysini inifile, 'settings', 'confirm_sizeloc', Confirm.Position()
+  CALL Confirm.Close
+  RETURN 1
+  SIGNAL RETURN
+ 
+/*-----------------------------------------------------------------------------+
+|                                                                              |
+|  Global procedures:                                                          |
+|                                                                              |
++-----------------------------------------------------------------------------*/
+
+add_edit:
+  DO i=1 TO 4
+  save_data.i = opendata.sel_year.sel_jday.i
+  END
+  
+  IF ModalFor(editit) = 1 THEN
+    DO
+      write2disk = 0
+      DO i=1 TO 4  
+      IF save_data.i >< opendata.sel_year.sel_jday.i THEN
+        DO
+        opendata.sel_year.sel_jday.i = save_data.i
+        write2disk = 1
+        END
+      END
+      CALL Newdata_save
+      CALL warplog.input_mle.Text opendata.sel_year.sel_jday.sel_subject
+    END
+  ELSE
+    DO
+    /* revert vars back to 0 */
+    DO i=1 TO 4
+    save_data.i = ""
+    END i
+    END
+  
+  CALL warplog.status_hint.IsDefault "controlhint"
+  RETURN
+
+ins_bookmark:
+  bookmark_ins = Add_bookmarks.bookmark_list.Item(Add_bookmarks.bookmark_list.Select())
+  bookmark_ins = bkm_start || bookmark_ins || bkm_end
+  
+  CALL Sysini inifile, 'settings', 'adbkm_sizeloc', Add_bookmarks.Position()
+  CALL Add_bookmarks.Close
+  RETURN
+
+iniSave:
+  /* save positions and fonts to ini file */
+  
+  CALL SysIni inifile, 'settings', 'sizeloc', warplog.Position()
+  CALL SysIni inifile, 'settings', 'deffont', warplog.Font()
+  
+  
+  RETURN
+
+iniRead:
+  IF Stream(inifile, 'C', QUERY EXISTS) = "" THEN
+    DO
+      default_file = 'warplog.dat'
+      CALL SysIni inifile, 'settings', 'deffile', default_file
+      CALL iniSave
+    END
+  ELSE
+    DO
+      default_file = SysIni(inifile, 'settings', 'deffile')
+      CALL warplog.Position SysIni(inifile, 'settings', 'sizeloc')
+      CALL warplog.Font SysIni(inifile, 'settings', 'deffont')
+    END
+  
+  current_file = default_file
+  RETURN
+
+Search_line:
+  /* search one line from Search_day */
+  
+  DO xdata=1 TO (line_length - search_length)
+  
+      IF SUBSTR(entry_lines.i, xdata, search_length) = string_to_find THEN
+        DO
+        /* Found MATCH!!!! */
+        CALL Jdate2ymd search_jday, (search_yr + 1999)
+        match_data = search_yr"/"datestr"/"search_sj
+  
+        IF xdata <= 20 THEN
+          match_offset = 1
+        ELSE
+          match_offset = xdata - 20
+      
+        match_string = substr(entry_lines.i, match_offset, 50)
+        match_string = search_yr + 1999 || "/" || datestr || " (" || subject_name.search_sj || ") " || match_string
+        CALL search_data.search_results.Add match_string, "L", match_data
+        xdata = entry_length - search_length /* ends loop */
+        search_results_total = search_results_total + 1
+        END
+  END xdata
+  RETURN
+
+Write_rcfile:
+  /* write settings to rc file */
+  
+  
+  'copy warplog.rc warplogrc.bak'
+  'del warplog.rc'
+  
+  CALL LineOut warplog.rc, , 1
+  
+  CALL LineOut warplog.rc, "# Warplog settings file."
+  CALL LineOut warplog.rc, "# Default file to open listed below:"
+  CALL LineOut warplog.rc, default_file
+  
+  /* Close file */
+  CALL LineOut(warplog.rc)
+  RETURN
+
+check_entry:
+  
+  /* check current day for the number of entries */
+  PARSE ARG check_day 
+  
+  check_jday=ymd2jdate(sel4_year, sel_month, check_day)
+  
+  no_selected = 0
+  
+  check_string = ""
+  blank_entry = 0
+  
+  DO k = 1 to 4
+    IF opendata.sel_year.check_jday.k <> "" THEN
+      check_string = check_string || D2C(251)
+    ELSE
+      DO
+        check_string = check_string || D2C(7)
+        blank_entry = blank_entry + 1
+      END
+  END
+  
+  IF blank_entry = 4 THEN
+    check_string = check_day
+  ELSE
+    check_string = check_day || '    -    ' || check_string
+   
+  RETURN check_string
+
+back_oneday:
+  /* go back one day */
+  
+  update_string = "XX"
+  
+  IF sel_date = 1 THEN
+    DO
+      IF sel_month = 1 THEN
+        DO
+          sel_year = sel_year - 1
+          sel4_year = sel_year + 1999
+          sel_month = 12
+          sel_date = 31
+          update_string = "MY"
+        END
+      ELSE
+        DO
+          sel_month = sel_month - 1
+          SELECT
+            WHEN sel_month = 2 & sel4_year//4 >< 0 THEN
+              last_day_of_month = 28
+            WHEN sel_month = 2 & sel4_year//4 = 0 THEN
+              last_day_of_month = 29
+            WHEN sel_month = 4 | sel_month = 6 | sel_month = 9 | sel_month = 11 THEN
+              last_day_of_month = 30
+            OTHERWISE
+             last_day_of_month = 31
+          END /* end select */
+          sel_date = last_day_of_month
+          update_string = "MX"
+        END
+    END /* end original IF */
+  ELSE
+    sel_date = sel_date - 1
+  
+  IF Substr(update_string, 2, 1) = "Y" THEN
+    CALL warplog.year_sel.Select sel_year, "Select"
+  IF SubStr(update_string, 1, 1) = "M" THEN
+    CALL warplog.month_sel.Select sel_month, "Select"
+  
+  CALL warplog.date_sel.Select sel_date, "Select"
+  RETURN
+
+advance_oneday:
+  /* advance one day */
+  next_select_day = Warplog.date_sel.Select() + 1 
+  
+  /* test for end of month or year here */
+  IF next_select_day > last_day_of_month THEN
+    DO
+      IF sel_month = 12 THEN
+        DO
+          /* for some reason I _must_ select the day before changing the month - It makes no sense to me! */
+          CALL warplog.date_sel.Select 1, "select"
+          CALL warplog.month_sel.Select 1, "select"
+          CALL warplog.year_sel.Select (warplog.year_sel.Select() + 1), "select" 
+        END
+      ELSE
+        DO
+          CALL warplog.date_sel.Select 1, "select"
+          CALL warplog.month_sel.Select (sel_month + 1), "Select" 
+        END
+      
+    END
+  ELSE
+    CALL warplog.date_sel.Select  next_select_day, "select" 
+  
+  RETURN
+
+Search_day:
+  /* Searches a single day entry.  Called from Search_data */
+  
+  search_length = LENGTH(search_data.search_text.Text())
+  entry_length = LENGTH(opendata.search_yr.search_jday.search_sj)
+  string_to_find = search_data.search_text.Text()
+  
+  /* Break into individual lines */
+  counter = 1
+  entry_lines. = 0
+  
+  /* Top 10 reasons why Perl is better than Rexx! This is rediculous but it works... */
+  remaining = opendata.search_yr.search_jday.search_sj
+  remaining = translate(remaining, junk, sspc)
+  remaining = translate(remaining, dspc, crlf) 
+  
+  DO WHILE remaining >< ""
+     PARSE VAR remaining entry_lines.counter remaining
+     entry_lines.counter = translate(entry_lines.counter, sspc, junk)
+     IF entry_lines.counter >< "" THEN
+       counter = counter + 1
+  END 
+  
+  
+  entry_lines.0 = counter
+  
+  /* search through individual lines */
+  DO i=1 to entry_lines.0
+  line_length = LENGTH(entry_lines.i) + 1
+  
+  IF line_length > search_length THEN
+   DO /* begin full "do" */
+   
+   SELECT
+   WHEN do_search_bkm = 1 & Search_data.search_text.Text() >< "" THEN
+      DO
+       IF substr(entry_lines.i, 1, bkm_search_length) = bkm_search_string THEN
+          CALL Search_line
+      END
+   WHEN do_search_bkm = 1 & Search_data.search_text.Text() = "" THEN
+      DO
+       IF substr(entry_lines.i, 1, bkm_search_length) = bkm_search_string THEN
+         DO
+          CALL Jdate2ymd search_jday, (search_yr + 1999)
+          match_data = search_yr"/"datestr"/"search_sj
+          match_string = substr(entry_lines.i, 1, 60)
+          match_string = search_yr + 1999 || "/" || datestr || " (" || subject_name.search_sj || ") " || match_string
+  
+          CALL search_data.search_results.Add match_string, "L", match_data
+          search_results_total = search_results_total + 1
+         END
+      END
+   OTHERWISE
+      CALL Search_line
+   END /* end SELECT */
+  END /* end full "do" */
+  END i /* end looping on entry_lines.* */
+  RETURN
+
+Find_weekday:
+  /* find weekday - "borrowed" from "Teach yourself REXx in 21-days" */
+  
+  IF sel_month > 2 THEN
+    DO
+      adjMonth = sel_month - 2
+      adjYear = sel4_year
+    END
+  ELSE
+    DO
+      adjMonth = sel_month + 10
+      adjYear = sel4_year - 1
+    END
+  
+  
+  century = adjYear % 100
+  yearInCentury = adjYear - 100 * century
+  dayOfWeek = (((13 * adjMonth - 1) % 5 + sel_date + yearInCentury + yearInCentury % 4 + century % 4 - century - century + 77) // 7 ) + 1
+  sel_weekday = weekday.dayOfWeek
+  RETURN
+
+Newdata_save:
+  /* Add new data into the array and write to disk */
+  
+  /* This could probably be more efficient but it works */
+  IF write2disk = 1 THEN
+     DO
+       rc=Saving_msg.Open(,,"M")
+       CALL Saving_msg.Saving_txt.Text "Saving file, " || current_file || " to disk"
+       'del warplog.back'
+       'ren 'current_file' warplog.back'
+       
+       /* write data to disk */
+       CALL LineOut current_file, , 1
+  
+       /* output subjects to file */
+       DO i=1 TO 4
+          subject_out = settings_start || "SBJ" || i || ":" || subject_name.i
+          CALL LineOut current_file,  subject_out
+       END
+  
+       /* output bookmarks to file */
+       DO i=1 to bookmarks.0
+          bookmark_out = settings_start || "BKM:" || bookmarks.i
+          CALL LineOut current_file, bookmark_out
+       END
+  
+  
+       /* output data to file */
+       DO i = 1 to (today_year - 1999)
+          DO j = 1 to 366
+             IF j < 10 THEN j = "00"j
+             IF j > 10 & j < 100 THEN j = "0"j
+             DO k = 1 to 4
+                IF opendata.i.j.k = "" THEN
+                   NOP
+                ELSE
+                   DO
+                   /* entry header */
+                   begin_entry_line = start_line" BEGIN_ENTRY "i + 1999" "j" "k
+                   end_entry_line = end_line" END_ENTRY "i + 1999" "j" "k
+                   CALL LineOut current_file, begin_entry_line
+                   CALL LineOut current_file, opendata.i.j.k
+                   END
+  
+             END k /* subjects */
+          END j /* days */
+       END i /* years */
+       CALL LineOut(current_file)
+       CALL Update_datelist
+     END /* end-do */
+  
+  write2disk = 0
+  CALL Saving_msg.Close
+  RETURN
+
+Update_datelist:
+  sel4_year = sel_year + 1999
+  sel_month = warplog.month_sel.Select()
+  
+  DO i = 1 TO 28
+    CALL warplog.date_sel.Delete i
+    IF i < 10 THEN
+       i = "0" || i
+    date_data=check_entry(i)
+    CALL warplog.date_sel.add date_data, i, i
+  END
+  
+  /* fill remainder beyond 28 dependent on month & leap year (for Feb.) */
+  
+  CALL warplog.date_sel.Delete 31
+  CALL warplog.date_sel.Delete 30
+  CALL warplog.date_sel.Delete 29
+  
+  SELECT
+    WHEN sel_month = 2 & sel4_year//4 >< 0 THEN
+        last_day_of_month = 28
+    WHEN sel_month = 2 & sel4_year//4 = 0 THEN
+      DO
+        last_day_of_month = 29
+        date_data=check_entry(29)
+        CALL warplog.date_sel.Add date_data, 29, 29
+      END
+    WHEN sel_month = 4 | sel_month = 6 | sel_month = 9 | sel_month = 11 THEN
+      DO
+        last_day_of_month = 30
+        date_data=check_entry(29)
+        CALL warplog.date_sel.Add date_data, 29, 29
+        date_data=check_entry(30)
+        CALL warplog.date_sel.Add date_data, 30, 30
+      END
+    OTHERWISE
+      DO
+        last_day_of_month = 31
+        date_data=check_entry(29)
+        CALL warplog.date_sel.Add date_data, 29, 29
+        date_data=check_entry(30)
+        CALL warplog.date_sel.Add date_data, 30, 30
+        date_data=check_entry(31)
+        CALL warplog.date_sel.Add date_data, 31, 31
+      END
+  END
+  
+  IF sel_date > last_day_of_month THEN
+       sel_date = last_day_of_month
+  
+  
+  CALL warplog.date_sel.Select sel_date
+  RETURN
+
+ymd2jdate:
+  /* convert YYYYMMDD to YYYYDDD */
+  parse arg ayear, amonth, aday
+  
+  
+  IF (ayear//4=0 & ayear//100<>0) | (ayear//400=0) THEN
+      leapval = 1
+  ELSE
+      leapval = 0
+  
+  SELECT
+      WHEN amonth = 1 THEN
+          rjdate = aday
+      WHEN amonth = 2 THEN
+          rjdate = aday + 31
+      WHEN amonth = 3 THEN
+          rjdate = aday + 59 + leapval
+      WHEN amonth = 4 THEN
+          rjdate = aday + 90 + leapval
+      WHEN amonth = 5 THEN
+          rjdate = aday + 120 + leapval
+      WHEN amonth = 6 THEN
+          rjdate = aday + 151 + leapval
+      WHEN amonth = 7 THEN
+          rjdate = aday + 181 + leapval
+      WHEN amonth = 8 THEN
+          rjdate = aday + 212 + leapval
+      WHEN amonth = 9 THEN
+          rjdate = aday + 243 + leapval
+      WHEN amonth = 10 THEN
+          rjdate = aday + 273 + leapval
+      WHEN amonth = 11 THEN
+          rjdate = aday + 304 + leapval
+      OTHERWISE
+      rjdate = aday + 334 + leapval
+  END
+  
+  /* This would be better with sprintf("%03d", string) */
+  
+  rjdate=RIGHT(rjdate, 3, "0")
+  
+  RETURN rjdate
+
+jdate2ymd:
+  /* returns the input julian date to return in MM/DD format */
+  parse ARG ajdate, ayear
+  
+  ajdate = RIGHT(ajdate, 3, "0")
+  
+  IF (ayear//4=0 & ayear//100=\0) | ayear//400=0 THEN
+      leapval = 1
+  ELSE
+      leapval = 0
+  
+  SELECT 
+      WHEN ajdate < 32 THEN
+          datestr = "01/" || ajdate
+      WHEN ajdate < 60 + leapval THEN
+          datestr = "02/" || ajdate - 31
+      WHEN ajdate < 91 + leapval THEN
+          datestr = "03/" || ajdate - (59 + leapval) 
+      WHEN ajdate < 121 + leapval THEN
+          datestr = "04/" || ajdate - (90 + leapval) 
+      WHEN ajdate < 152 + leapval THEN
+          datestr = "05/" || ajdate - (120 + leapval)
+      WHEN ajdate < 182 + leapval THEN
+          datestr = "06/" || ajdate - (151 + leapval)
+      WHEN ajdate < 213 + leapval THEN
+          datestr = "07/" || ajdate - (181 + leapval)
+      WHEN ajdate < 244 + leapval THEN
+          datestr = "08/" || ajdate - (212 + leapval)
+      WHEN ajdate < 274 + leapval THEN
+          datestr = "09/" || ajdate - (243 + leapval)
+      WHEN ajdate < 305 + leapval THEN
+          datestr = "10/" || ajdate - (273 + leapval)
+      WHEN ajdate < 335 + leapval THEN
+          datestr = "11/" || ajdate - (304 + leapval)
+      OTHERWISE
+      datestr = "12/" || ajdate - (334 + leapval)
+  END
+  RETURN
+
+Update_text:
+  /* Update the MLE text area based on YYYY DDD S */
+  
+  /* Get the date from the controls */
+  sel_year = warplog.year_sel.Select()
+  sel4_year = sel_year + 1999
+  sel_month = warplog.month_sel.Select()
+  
+  IF LENGTH(sel_month) < 2 THEN
+     sel_month = "0"sel_month 
+  sel_date = warplog.date_sel.Select()
+  IF LENGTH(sel_date) < 2 THEN
+     sel_date = "0"sel_date
+  
+  
+  /* get the julian date */
+  sel_jday = Ymd2jdate( sel4_year, sel_month, sel_date )
+  
+  get_year = sel_year - 1999
+  
+  IF opendata.sel_year.sel_jday.sel_subject = "" THEN
+    date_string = "- Empty"
+  ELSE
+    date_string = ""
+  
+  CALL Find_weekday
+  date_string = sel_weekday" "month_string.sel_month" "sel_date", "sel4_year"  Day:"sel_jday" - ("subject_name.sel_subject")"date_string
+  
+  
+  CALL warplog.date_line.Text date_string
+  
+  
+  /* alter the color of the subject button text depeding on the contents of that entry ie
+   * ie. empty=black, used=red?
+   */
+  
+  
+  CALL warplog.input_mle.Text opendata.sel_year.sel_jday.sel_subject
+  RETURN
+
+Open_data_file:
+  /* routine for opening and initializing a data file */
+  
+  /* TODO: change to accept args for file to open */
+  
+  /* TODO: clear MLE & other display artifacts */
+  
+  
+  output_first = 0
+  entry_counter = 0
+  toggle_first = 0
+  linecounter = 1
+  opendata. = ""
+  
+  /* clear bookmarks & subjects */
+  bookmarks. = ""
+  bookmarks.0 = 0
+  subject_name. = ""
+  
+  bkm_counter = 0
+  subj_counter = 0
+  
+  
+  CALL warplog.status_hint.Text "Reading Datafile "current_file
+  
+  /* read the data file in */
+  DO WHILE Lines(current_file)
+    newline = LineIn(current_file)
+     IF SubStr(newline, 1, 2) = start_line THEN
+         DO
+           /* check for first & last entry */
+           PARSE VAR newline junk begin_end entry_year entry_day entry_subj
+           entry_year = entry_year - 1999   
+           output_first = 1
+           entry_counter = entry_counter + 1
+           IF toggle_first = 0 THEN
+             first_entry = entry_year" "entry_day" "entry_subj
+           last_entry = entry_year" "entry_day" "entry_subj
+         END
+     ELSE IF SubStr(newline, 1, 2) = settings_start THEN
+        DO
+          /* parse line and push into appropriate vars */
+          setting_type = substr(newline, 3, 3)
+          IF setting_type = BKM THEN
+             DO
+               bkm_counter = bkm_counter + 1
+               bookmarks.bkm_counter = substr(newline, 7, (length(newline) - 6))
+               bookmarks.0 = bkm_counter
+             END
+          ELSE IF setting_type = SBJ THEN
+             DO
+               subj_counter = subj_counter + 1
+               subject_name.subj_counter = substr(newline, 8, (length(newline) - 7))
+             END
+          ELSE           
+            NOP
+          /* done with settings line */
+       END
+     ELSE
+         DO
+         IF output_first = 1 THEN
+           DO
+             opendata.entry_year.entry_day.entry_subj = opendata.entry_year.entry_day.entry_subj || newline
+             output_first = 0
+           END
+         ELSE
+           opendata.entry_year.entry_day.entry_subj = opendata.entry_year.entry_day.entry_subj || crlf || newline 
+             
+         END /* end ELSE-DO */
+     /* check for bookmarks */
+     IF substr(newline, 1, 1) = bkm_start THEN
+       DO
+        end_pos = POS(bkm_end, newline, 2)
+        IF end_pos >< "" THEN
+          new_bkm = substr(newline, 2, (end_pos - 2))
+        dupe_bkm = 0
+        DO i=1 TO bookmarks.0
+         IF bookmarks.i = new_bkm THEN
+           dupe_bkm = 1
+        END i
+        IF dupe_bkm = 0 THEN
+          DO
+           bookmarks.0 = bookmarks.0 + 1
+           junk = bookmarks.0
+           bookmarks.junk = new_bkm
+          END
+       END
+   
+  END    /* end DO-WHILE */
+  
+  /* close file */
+  CALL LineOut(current_file)
+  
+  /* update subjects */
+  DO i=1 TO 4
+    IF subject_name.i = "" THEN
+       subject_name.i = "unknown"
+  END
+  
+  CALL warplog.subj_one.text subject_name.1
+  CALL warplog.subj_two.text subject_name.2
+  CALL warplog.subj_three.text subject_name.3
+  CALL warplog.subj_four.text subject_name.4
+  
+  /* status message */
+  CALL warplog.status_hint.Text "Done Reading Datafile "current_file": "entry_counter" Entries or "opendata.0
+  RETURN
+ 
+/*-----------------------------------------------------------------------------+
+|                                                                              |
+|  Default initialization:                                                     |
+|                                                                              |
++-----------------------------------------------------------------------------*/
+
+INIT:
+  SIGNAL RETURN
+ 
+/*-----------------------------------------------------------------------------+
+|                                                                              |
+|  Default error handlers:                                                     |
+|                                                                              |
++-----------------------------------------------------------------------------*/
+
+SYNTAX:
+  SAY 'SYNTAX ERROR:' errortext( rc ) 'in:'
+  SAY sourceline( sigl )
+  SIGNAL ON SYNTAX
+  SIGNAL RETURN
+
+HALT:
+  SAY 'HALT occurred in:'
+  SAY sourceline( sigl )
+  SIGNAL ON HALT
+  SIGNAL RETURN
